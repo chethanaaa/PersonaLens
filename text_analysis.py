@@ -1,14 +1,19 @@
 import requests
 import json
+from dotenv import load_dotenv
+import os
 
-# Perplexity API key
-API_KEY = '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'
+load_dotenv()
+API_KEY = os.getenv("PERPLEXITY_API_KEY")
+
+if not API_KEY:
+    raise ValueError("API Key not found. Please set it in the .env file.")
 
 # Perplexity API endpoint
 URL = 'https://api.perplexity.ai/chat/completions'
 
 # Step 1: Load the Segmented Text
-def load_segmented_text(file_path="segmented_dialogue.txt"):
+def load_segmented_text(file_path="data/processed/transcripts/segmented_dialogue.txt"):
     try:
         with open(file_path, "r") as f:
             return f.read()
@@ -77,21 +82,26 @@ def analyze_segmented_text_with_perplexity(segmented_text, model_name="llama-3.1
 
 # Step 3: Execute the Analysis
 if __name__ == "__main__":
+    # Input and output file paths
+    input_file_path = "data/processed/transcripts/segmented_dialogue.txt"
+    analysis_output_path = "data/processed/text_analysis/text_analysis_report.txt"
+
+    os.makedirs(os.path.dirname(analysis_output_path), exist_ok=True)
+
     # Load the segmented text
-    segmented_text = load_segmented_text("segmented_dialogue_test2.txt")
+    segmented_text = load_segmented_text(input_file_path)
     
     if segmented_text:
         # Analyze the text
+        print("Analyzing segmented text...")
         analysis = analyze_segmented_text_with_perplexity(segmented_text)
         
         if analysis:
-            # Print the analysis
-            print("\nAnalysis Report:")
-            print(analysis)
-            
             # Save the analysis to a file
-            with open("data/processed/text_analysis/text_analysis_report.txt", "w") as f:
+            with open(analysis_output_path, "w") as f:
                 f.write(analysis)
-            print("\nAnalysis saved to 'sentiment_analysis_report.txt'")
+            print(f"\nAnalysis saved to: {analysis_output_path}")
         else:
             print("Analysis failed. No output generated.")
+    else:
+        print(f"Failed to load segmented text from: {input_file_path}")
