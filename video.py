@@ -5,6 +5,18 @@ from scipy.spatial import distance as dist
 from collections import defaultdict
 import os
 import requests
+import openai
+import json
+from dotenv import load_dotenv
+
+load_dotenv()
+API_KEY = os.getenv("PERPLEXITY_API_KEY")
+if not API_KEY:
+    raise ValueError("API Key not found. Please set it in the .env file.")
+
+
+BASE_URL = "https://api.perplexity.ai/chat/completions"  # Replace with the actual API endpoint
+
 # Constants
 EYE_ASPECT_RATIO_THRESHOLD = 0.25
 EYE_BLINK_FRAMES = 3
@@ -18,7 +30,7 @@ gaze_outside_frame_count = 0
 event_logs = defaultdict(list)
 
 # Initialize Dlib's face detector and shape predictor
-p = "/Users/chethana/Downloads/shape_predictor_68_face_landmarks.dat"
+p = "data/raw/shape_predictor_68_face_landmarks.dat"
 detector = dlib.get_frontal_face_detector()
 predictor = dlib.shape_predictor(p)  # Update with the correct path
 
@@ -49,6 +61,9 @@ def calculate_gaze(eye, frame):
     x_max, y_max = np.max(eye, axis=0)
     eye_frame = frame[y_min:y_max, x_min:x_max]
 
+    if eye_frame.size == 0:  # Check if eye_frame is empty
+        return None, None, None
+
     gray_eye = cv2.cvtColor(eye_frame, cv2.COLOR_BGR2GRAY)
     _, thresh_eye = cv2.threshold(gray_eye, 70, 255, cv2.THRESH_BINARY)
 
@@ -62,6 +77,8 @@ def calculate_gaze(eye, frame):
             cy = int(M["m01"] / M["m00"]) + y_min
             return cx, cy, largest_contour
     return None, None, None
+
+
 
 def process_video(video_path, max_time=60):
     """
@@ -97,6 +114,9 @@ def process_video(video_path, max_time=60):
             print(f"Reached maximum processing time: {max_time} seconds")
             break
 
+        # Debugging: Check if faces are detected
+        print(f"Frame {frame_counter}: Detected {len(faces)} face(s).")
+
         for face in faces:
             shape = predictor(gray, face)
 
@@ -115,8 +135,24 @@ def process_video(video_path, max_time=60):
             if left_gaze_x is None or right_gaze_x is None:
                 continue
 
-            # Process other events like blinks and yawns...
-            # (Same as original code)
+            # Blink detection
+            left_ear = eye_aspect_ratio(left_eye)
+            right_ear = eye_aspect_ratio(right_eye)
+            avg_ear = (left_ear + right_ear) / 2.0
+
+            if avg_ear < EYE_ASPECT_RATIO_THRESHOLD:
+                blink_counter += 1
+            else:
+                if blink_counter >= EYE_BLINK_FRAMES:
+                    total_blinks += 1
+                    blink_counter = 0
+
+            # Yawn detection
+            if detect_yawn(shape):
+                yawn_count += 1
+
+        # Debugging: Log current counts
+        print(f"Frame {frame_counter}: Total Blinks: {total_blinks}, Yawns: {yawn_count}")
 
         # Show the annotated frame
         cv2.imshow("Blink, Gaze, and Yawn Detection", frame)
@@ -128,7 +164,6 @@ def process_video(video_path, max_time=60):
 
     # Return all relevant metrics and event logs
     return total_blinks, gaze_outside_frame_count, yawn_count, event_logs
-
 
 def analyze_events(event_logs):
     """Analyze events to find periods with the most activity."""
@@ -151,43 +186,6 @@ def analyze_events(event_logs):
 
     return analysis_results
 
-import openai
-import json
-
-# OpenAI API Key
-openai.api_key = "YOUR_API_KEY"
-
-
-
-def analyze_video(video_path):
-    """Analyze the video and send results to GPT."""
-    # Run the video processing function
-    results = process_video(video_path)
-    
-    if results is None:
-        print("Error: Video processing failed.")
-        return
-
-    # Extract metrics
-    blinks, gaze_outs, yawns, logs = results
-
-    print(f"Total Blinks: {blinks}")
-    print(f"Total Gaze Outside Frame: {gaze_outs}")
-    print(f"Total Yawns: {yawns}")
-
-    # Send the event logs to GPT
-    gpt_analysis = send_to_gpt(logs)
-    
-    if gpt_analysis:
-        print("\nGPT Analysis:\n")
-        print(gpt_analysis)
-
-import requests
-import json
-
-YOUR_API_KEY = "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"
-
-BASE_URL = "https://api.perplexity.ai/chat/completions"  # Replace with the actual API endpoint
 
 def send_to_language_model(event_logs, total_blinks, gaze_outs, yawns):
     """
@@ -218,7 +216,7 @@ def send_to_language_model(event_logs, total_blinks, gaze_outs, yawns):
 
     # Headers including the API key for authorization
     headers = {
-        "Authorization": f"Bearer {YOUR_API_KEY}",
+        "Authorization": f"Bearer {API_KEY}",
         "Content-Type": "application/json",
     }
 
@@ -261,14 +259,22 @@ def analyze_video_with_language_model(video_path, max_time=60):
 
     # Send event logs to the language model
     insights = send_to_language_model(logs, blinks, gaze_outs, yawns)
-    print("\nGenerated Insights from Language Model:\n")
-    print(insights)
+    if insights:
+        print("\nGenerated Insights from Language Model:\n")
+        print(insights)
+
+        # Save the analysis report to the processed directory
+        output_path = "data/processed/video/video_analysis_report.txt"
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)  # Ensure the directory exists
+        with open(output_path, "w") as f:
+            f.write(insights)
+        print(f"\nVideo analysis report saved to: {output_path}")
 
 
 if __name__ == "__main__":
     # Provide the correct path to the video
-    video_path = "/Users/chethana/Downloads/SAMPLE INTERVIEW FROM THE CLIENT_720.mp4"  # Use your uploaded video
+    video_path = "data/raw/video/SAMPLE INTERVIEW FROM THE CLIENT_720.mp4"  # Use your uploaded video
 
     # Analyze events and generate insights using the language model
-    analyze_video_with_language_model(video_path, max_time=360)
+    analyze_video_with_language_model(video_path, max_time=120)
 
