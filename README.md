@@ -4,6 +4,8 @@
 PersonaLens provides a comprehensive framework for analyzing interview performance by leveraging Generative AI and multimodal data (audio, video, and text). This system integrates insights from large language models (LLMs) to generate detailed, objective, and actionable reports based on candidate behavior.
 
 Link to visit the POC: https://personalens.streamlit.app
+
+For Access to the data please refer to the GDrive Data.txt for the google drive link.
 ---
 
 ## **Abstract**
