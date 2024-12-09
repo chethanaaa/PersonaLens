@@ -1,5 +1,17 @@
-import whisper
 import requests
+import whisper
+import json
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+API_KEY = os.getenv("PERPLEXITY_API_KEY")
+
+if not API_KEY:
+    raise ValueError("API Key not found. Please set it in the .env file.")
+
+# Perplexity API endpoint
+URL = 'https://api.perplexity.ai/chat/completions'
 
 # Step 1: Transcribe MP3 File
 def transcribe_audio(file_path):
@@ -7,15 +19,19 @@ def transcribe_audio(file_path):
     result = model.transcribe(file_path)
     return result['text']
 
-API_KEY = "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"  # Replace with your Perplexity API key
-URL = "https://api.perplexity.ai/v1/chat/completions"  # Ensure this endpoint is valid
-    
-# Step 2: Call Perplexity API to Segment Roles
-def segment_roles_with_perplexity(transcript):
-    
+def analyze_segmented_text_with_perplexity(segmented_text, model_name="llama-3.1-sonar-small-128k-online"):
+    """
+    Send the segmented text to the Perplexity API for analysis.
+    Args:
+        segmented_text (str): The input transcript to analyze.
+        model_name (str): The model to use for the analysis.
+    Returns:
+        str: The formatted analysis response, or an empty string if an error occurs.
+    """
+    # Define the prompt
     prompt = f"""
     The following is a transcript of an interview. Your task is to:
-    
+
     1. Label each line of dialogue with the correct speaker: "Interviewer" or "Candidate."
     2. Include every single word spoken, including filler words (e.g., "um," "uh," "like").
     3. Reformat the transcript into a clear dialogue format with speaker labels.
@@ -26,66 +42,67 @@ def segment_roles_with_perplexity(transcript):
     [Candidate]: <Text spoken by the candidate>
 
     Transcript:
-    {transcript}
+    {segmented_text}
     """
 
+    # Define the payload
     payload = {
-        'model': 'llama-3.1-sonar-small-128k-online',  # Replace with desired Perplexity model
+        'model': model_name,
         'messages': [
             {'role': 'system', 'content': 'You are a helpful assistant specializing in data analysis.'},
             {'role': 'user', 'content': prompt}
         ],
-        'temperature': 0.7
+        'temperature': 0.7  # Optional: Controls the randomness of the output
     }
 
+    # Define the headers with the API key
     headers = {
         'Authorization': f'Bearer {API_KEY}',
         'Content-Type': 'application/json'
     }
 
     try:
+        # Make the request to the Perplexity API
         response = requests.post(URL, json=payload, headers=headers)
 
         if response.status_code == 200:
-            result = response.json()
-            return result['choices'][0]['message']['content'].strip()
+            # Parse the response and return the formatted content
+            output = response.json()
+            return output.get('choices', [{}])[0].get('message', {}).get('content', '').strip()
         else:
             print(f"Error: {response.status_code}, {response.text}")
-            return None
+            return ""
     except Exception as e:
         print(f"Error communicating with Perplexity API: {e}")
-        return None
+        return ""
 
-# Step 3: Save Segmented Dialogue
-def save_segmented_dialogue(segmented_dialogue, file_path="segmented_dialogue.txt"):
-    try:
-        with open(file_path, "w") as f:
-            f.write(segmented_dialogue)
-        print(f"Segmented dialogue saved to {file_path}")
-    except Exception as e:
-        print(f"Failed to save segmented dialogue: {e}")
-
-# Step 4: Process Audio File
-def process_audio(file_path):
-    # Transcribe the audio file
-    transcribed_text = transcribe_audio(file_path)
-    print("Original Transcribed Text:")
-    print(transcribed_text)
-
-    # Use Perplexity to segment roles
-    segmented_dialogue = segment_roles_with_perplexity(transcribed_text)
-
-    if segmented_dialogue:
-        print("\nSegmented Dialogue:")
-        print(segmented_dialogue)
-
-        # Save outputs
-        save_segmented_dialogue(segmented_dialogue, "data/processed/transcripts/segmented_dialoguetest3.txt")
-        save_segmented_dialogue(transcribed_text, "data/processed/transcripts/transcription_test3.txt")
-
-    return segmented_dialogue
-
-# Step 5: Execute
 if __name__ == "__main__":
-    audio_file_path = "data/raw/audio/MY second interview at UPwork for 15-30 dollars per hour job__4.mp3"  # Replace with the actual MP3 file path
-    process_audio(audio_file_path)
+    # Input and output file paths
+    audio_file_path = "data/raw/audio/SAMPLE INTERVIEW FROM THE CLIENT_4.mp3"
+    segmented_text_path = "data/processed/transcripts/segmented_dialogue.txt"
+    analysis_report_path = "data/processed/transcripts/analysis_report.txt"
+
+    os.makedirs(os.path.dirname(segmented_text_path), exist_ok=True)
+
+    # Transcribe the audio
+    segmented_text = transcribe_audio(audio_file_path)
+
+    if segmented_text:
+        # Save the segmented text
+        with open(segmented_text_path, "w") as f:
+            f.write(segmented_text)
+        print(f"Segmented text saved to: {segmented_text_path}")
+
+        # Analyze the text
+        print("Analyzing segmented text...")
+        analysis = analyze_segmented_text_with_perplexity(segmented_text)
+
+        if analysis:
+            # Save the analysis report
+            with open(analysis_report_path, "w") as f:
+                f.write(analysis)
+            print(f"Analysis report saved to: {analysis_report_path}")
+        else:
+            print("Analysis failed. No output generated.")
+    else:
+        print("No segmented text found. Please check the input file.")
