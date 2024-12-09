@@ -3,9 +3,14 @@ import numpy as np
 import os
 import requests
 import json
+from dotenv import load_dotenv
 
-# Perplexity API key and endpoint
-API_KEY = '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'
+load_dotenv()
+API_KEY = os.getenv("PERPLEXITY_API_KEY")
+
+if not API_KEY:
+    raise ValueError("API Key not found. Please set it in the .env file.")
+
 URL = 'https://api.perplexity.ai/chat/completions'
 
 # Function to extract audio features
@@ -102,14 +107,31 @@ def generate_contextual_insights_perplexity(audio_insights):
         print(f"Error communicating with Perplexity API: {e}")
         return None
 
-# Analyze a sample audio file
-audio_path = "data/raw/audio/MY second interview at UPwork for 15-30 dollars per hour job__4.mp3"
-interval = 5
+if __name__ == "__main__":
+    # Analyze a sample audio file
+    audio_path = "data/raw/audio/MY second interview at UPwork for 15-30 dollars per hour job__4.mp3"
+    interval = 5
 
-# Extract insights
-audio_insights = extract_timestamps_and_insights(audio_path, interval)
-print("Audio Insights:", audio_insights)
+    # Extract insights
+    audio_insights = extract_timestamps_and_insights(audio_path, interval)
+    print("Audio Insights:", audio_insights)
 
-# Generate contextual insights
-contextual_insights = generate_contextual_insights_perplexity(audio_insights)
-print("Contextual Insights:", contextual_insights)
+    # Generate contextual insights
+    contextual_insights = generate_contextual_insights_perplexity(audio_insights)
+    print("Contextual Insights:", contextual_insights)
+
+    # Save the insights to the processed directory
+    audio_insights_path = "data/processed/audio/audio_insights.json"
+    contextual_insights_path = "data/processed/audio/audio_analysis_report.txt"
+
+    os.makedirs(os.path.dirname(audio_insights_path), exist_ok=True)
+
+    # Save timestamp-based insights
+    with open(audio_insights_path, "w") as f:
+        json.dump(audio_insights, f, indent=2)
+    print(f"Audio insights saved to: {audio_insights_path}")
+
+    # Save contextual insights
+    with open(contextual_insights_path, "w") as f:
+        f.write(contextual_insights)
+    print(f"Contextual audio analysis saved to: {contextual_insights_path}")
